@@ -5,4 +5,4 @@ Here's where I'll be collecting my solutions to the [Advent of Code 2019](https:
 
 Unless otherwise specified, all the scripts will be in Python 3.7 and obviously the inputs are specific to me.
 
-Huge thanks [Eric Wastl](https://twitter.com/ericwastl) for putting this puzzle together every year. It's a ton of fun.
+Huge thanks to [Eric Wastl](https://twitter.com/ericwastl) for putting this puzzle together every year. It's a ton of fun.
