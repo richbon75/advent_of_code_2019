@@ -1,5 +1,6 @@
 # Notes: Could a deque be faster than lists for the buffers?  Maybe,
 # but the buffers are going to be very short so it probably doesn't matter.
+from copy import copy
 
 class Intputer(object):
     '''This is a model of a computer that can run Intcode programs.
@@ -15,16 +16,16 @@ class Intputer(object):
         '''
         if input_buffer is None:
             input_buffer = list()
-        else:
-            self.input_buffer = input_buffer
+        self.input_buffer = input_buffer
+        self.readattempts = 0
         if output_buffer is None:
             output_buffer = list()
-        else:
-            self.output_buffer = output_buffer
+        self.output_buffer = output_buffer
         self.name = name
-        self.memory = list()
+        self.memory = dict()
         self.backup = list()
         self.pc = 0
+        self.relative_base = 0
         self.counter = 0
         self.running = False
         self.param_mode = 0
@@ -37,6 +38,7 @@ class Intputer(object):
             6: self.op6,
             7: self.op7,
             8: self.op8,
+            9: self.op9,
             99: self.op99
         }
     
@@ -51,46 +53,60 @@ class Intputer(object):
         raise ValueError(f"Unknown parameter mode position: {p}")
 
     def load_program(self, data):
-        '''Load a program into the memory of the Intputer'''
+        '''Load a program into the memory of the Intputer.
+        Pass data as a filename to read from, a list to load into memory,
+        or a complete memory dict.'''
         self.reset()
-        self.memory = list()
-        if isinstance(data, list):
-            self.memory.extend(data[:])
-        elif isinstance(data, str):
+        if isinstance(data, str):
+            tempdata = list()
             with open(data, 'r') as f:
                 for line in f:
                     line = line.strip()
-                    self.memory.extend([int(x) for x in line.split(',')])
+                    tempdata.extend([int(x) for x in line.split(',')])
+            data = tempdata
+        if isinstance(data, list):
+            self.memory = {index:value for index, value in enumerate(data)}
+        elif isinstance(data, dict):
+            self.memory = copy(data)
         else:
             raise ValueError('Unknown data - expected a list or a filename')
-        self.backup = list(self.memory[:])
+        self.backup = copy(self.memory)
     
     def reset(self):
         '''Reset the Intputer.  Resets program memory to original loaded program.'''
-        self.memory = list(self.backup[:])
+        self.memory = copy(self.backup)
         self.pc = 0
         self.counter = 0
         self.running = True
     
     def readDirect(self, loc):
         '''Directly read the value at memory location loc'''
-        return self.memory[loc]
+        return self.memory.get(loc, 0)
     
     def readRef(self, loc, pm):
         '''Return the value stored at memory location referenced by loc'''
-        if pm == 0:
-            location = self.memory[loc]
-            return self.memory[location]
-        if pm == 1:
-            return self.memory[loc]
+        if pm == 0:   # Position Mode
+            location = self.memory.get(loc, 0)
+            return self.memory.get(location, 0)
+        if pm == 1:   # Immediate Mode 
+            return self.memory.get(loc, 0)
+        if pm == 2:   # Relative Mode
+            location = self.memory.get(loc, 0) + self.relative_base
+            return self.memory.get(location, 0)
         raise ValueError(f"Unknown parameter mode: {pm}")
     
-    def writeRef(self, loc, value):
+    def writeRef(self, loc, value, pm=0):
         '''Write a value to the memory location referenced by loc'''
+        if pm == 0:   # Position Mode
+            location = self.memory.get(loc, 0)
+            self.memory[location] = value
+            return
         # Parameters that an instruction writes to will never be in immediate mode
-        location = self.memory[loc]
-        self.memory[location] = value
-        return
+        if pm == 2:   # Relative Mode
+            location = self.memory.get(loc, 0) + self.relative_base
+            self.memory[location] = value
+            return
+        raise ValueError(f"Unknown parameter mode: {pm}")
     
     def jumpTo(self, loc):
         '''Move pc to new location'''
@@ -120,7 +136,7 @@ class Intputer(object):
         operand1 = self.readRef(pc+1, self.pm(1))
         operand2 = self.readRef(pc+2, self.pm(2))
         result = operand1 + operand2
-        self.writeRef(pc+3, result)
+        self.writeRef(pc+3, result, self.pm(3))
         self.pc += 4
     
     def op2(self):
@@ -129,7 +145,7 @@ class Intputer(object):
         operand1 = self.readRef(pc+1, self.pm(1))
         operand2 = self.readRef(pc+2, self.pm(2))
         result = operand1 * operand2
-        self.writeRef(pc+3, result)
+        self.writeRef(pc+3, result, self.pm(3))
         self.pc += 4
     
     def op3(self):
@@ -137,11 +153,16 @@ class Intputer(object):
         to the location given by that same integer.'''
         pc = self.pc
         if self.input_buffer:
+            self.readattempts = 0   # Read attempt successful, reset counter
             result = self.input_buffer.pop(0)
-            self.writeRef(pc+1, result)
+            self.writeRef(pc+1, result, self.pm(1))
         else:
+            self.readattempts += 1  # Count the failed read attempt
             self.pc -= 2 # force this command to re-run until there is input to process
         # result = int(input("Op3 requests an integer input: "))
+        # This is protection against bugs that result in the program waiting forever for input.
+        if self.readattempts > 100000:
+            raise RuntimeError("Maximum number of read attempts reached.")
         self.pc += 2
     
     def op4(self):
@@ -175,7 +196,7 @@ class Intputer(object):
         pc = self.pc
         operand1 = self.readRef(pc+1, self.pm(1))
         operand2 = self.readRef(pc+2, self.pm(2))
-        self.writeRef(pc+3, int(operand1 < operand2))
+        self.writeRef(pc+3, int(operand1 < operand2), self.pm(3))
         self.pc += 4
 
     def op8(self):
@@ -183,8 +204,15 @@ class Intputer(object):
         pc = self.pc
         operand1 = self.readRef(pc+1, self.pm(1))
         operand2 = self.readRef(pc+2, self.pm(2))
-        self.writeRef(pc+3, int(operand1 == operand2))
+        self.writeRef(pc+3, int(operand1 == operand2), self.pm(3))
         self.pc += 4
+    
+    def op9(self):
+        '''Adjust the relative base.'''
+        pc = self.pc
+        operand1 = self.readRef(pc+1, self.pm(1))
+        self.relative_base += operand1
+        self.pc += 2
     
     def op99(self):
         '''Perform op99 - Halt'''
