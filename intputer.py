@@ -112,13 +112,19 @@ class Intputer(object):
         '''Move pc to new location'''
         self.pc = loc
     
-    def run(self):
-        '''Run the Intputer.'''
+    def run(self, pause_for_input=False):
+        '''Run the Intputer.
+        If pause_for_input is True, the program will pause when
+        it is awaiting an input. It returns True if it awaits input,
+        or False if the program is completed.'''
         self.running = True
         while self.running:
             # Execute one instruction
             self.op()
-    
+            if pause_for_input and self.readattempts > 0:
+                return True
+        return False
+
     def op(self):
         '''Execute a single instruction.'''
         if self.running:
