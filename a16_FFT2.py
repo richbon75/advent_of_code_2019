@@ -1,0 +1,39 @@
+import numpy as np
+
+input = "59769638638635227792873839600619296161830243411826562620803755357641409702942441381982799297881659288888243793321154293102743325904757198668820213885307612900972273311499185929901117664387559657706110034992786489002400852438961738219627639830515185618184324995881914532256988843436511730932141380017180796681870256240757580454505096230610520430997536145341074585637105456401238209187118397046373589766408080120984817035699228422366952628344235542849850709181363703172334788744537357607446322903743644673800140770982283290068502972397970799328249132774293609700245065522290562319955768092155530250003587007804302344866598232236645453817273744027537630"
+# input = '12345678'
+# input = '80871224585914546619083218645595'
+# input = '03036732577212944063491565474664'
+
+msg_start = int(input[0:7])
+sequence = []
+for _ in range(0, 10000):
+    sequence.extend([int(ch) for ch in input])
+
+# Don't need the pattern at all. For any element beyond halfway, the pattern matrix
+# acts like a 0\1 upper triangular matrix.  See small sample:
+# 10N010N0  # N = Negative one, just for visualizing.
+# 01100NN0
+# 00111000
+# 00011110
+# 00001111  # halfway
+# 00000111
+# 00000011
+# 00000001
+# So any digit in the second half of the sequence is the sum of all the digits beyond them.
+# This won't be correct for elements in the first half, but we don't really care about them,
+# because our message starts more than halfway through the sequence. 
+
+def iterate():
+    global sequence
+    for i in range(len(sequence)-2, msg_start-1, -1):
+        sequence[i] = abs(sequence[i+1] + sequence[i]) % 10
+
+for x in range(0, 100):
+    print(f'Iteration: {x}')
+    iterate()
+
+print('Second star answer:')
+print(''.join(str(x) for x in sequence[msg_start:msg_start+8]))
+
+
